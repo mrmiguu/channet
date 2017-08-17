@@ -19,17 +19,17 @@ func example() {
 	//
 
 	s := netchan.New(8080)
-	<-s.Int() // same channel as client#1 & client#2
+	<-s.Int() // same channel as client#1 & client#2; blocks until client#1 reads
 
 	//
 
 	c1 := netchan.New(8080, "localhost")
-	c1.Int() <- 420 // same channel as client#2 & server
+	c1.Int() <- 420 // same channel as client#2 & server; if first, server reads; otherwise, blocks
 
 	//
 
 	c2 := netchan.New(8080, "localhost")
-	c2.Int() <- 69 // same channel as client#1 & server
+	c2.Int() <- 69 // same channel as client#1 & server; if first, server reads; otherwise, blocks
 
 	//
 	//
