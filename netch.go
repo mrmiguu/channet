@@ -1,4 +1,4 @@
-package netchan
+package netc
 
 import (
 	"errors"
@@ -6,35 +6,75 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"test/netchan"
+	"test/netc"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gorilla/websocket"
 )
 
-func example() {
-
-	//
-	//
-	//
-
-	s := netchan.New(8080)
-	<-s.Int() // same channel as client#1 & client#2; blocks until client#1 reads
-
-	//
-
-	c1 := netchan.New(8080, "localhost")
-	c1.Int() <- 420 // same channel as client#2 & server; if first, server reads; otherwise, blocks
-
-	//
-
-	c2 := netchan.New(8080, "localhost")
-	c2.Int() <- 69 // same channel as client#1 & server; if first, server reads; otherwise, blocks
-
-	//
-	//
-	//
+func testRealWorld() {
+	go testServer()
+	go testClient()
+	go testClient()
+	go testClient()
 }
+
+//
+//
+//
+
+// this is a shared structure
+
+type login struct {
+    name string
+    pass string
+}
+
+type user struct {
+}
+
+type database struct {
+    sync.RWMutex
+    lookup map[string]chan user
+}
+
+// there is one of this
+
+func testServer() {
+	netc.Connect(8080)
+    
+    db := database{lookup: map[string]user{}}
+    
+    go func() {
+        lc := make(chan login)
+        netc.Make(lc)
+        l := <-lc // blocks until a new user channel is sync'd remotely
+        
+        uc := make(chan user)
+        netc.Make(uc)
+        db.lookup[l.name] = uc
+        //
+        // work in progress
+        //
+    }()
+}
+
+// there are three of these
+
+func testClient() {
+	netc.Connect(8080, "localhost")
+    
+    lc := make(chan login)
+    netc.Make(lc)
+    lc <- login{"alxndrthegrt91", "*******"}
+    //
+    // work in progress
+    //
+}
+
+//
+//
+//
 
 type Type struct {
 	endpoint interface{}
