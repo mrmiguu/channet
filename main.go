@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/mrmiguu/netc/netc"
+	"github.com/mrmiguu/netc/safedb"
 )
 
 func main() {
@@ -31,25 +31,22 @@ type message struct {
 	body string
 }
 
-type safedb struct {
-	sync.RWMutex
-	m map[string]chan interface{}
-}
+//
+//
+//
 
 // there is one of this
 
 func testServer() {
 	netc.Connect(":6969")
 
-	db := safedb{m: make(map[string]chan interface{})}
+	db := safedb.New()
 
 	go func() {
 		ic := netc.Interface()
 		lgn := (<-ic).(login)
 
-		db.Lock()
-		db.m[lgn.key] = ic
-		db.Unlock()
+		db.Put(lgn.key, ic)
 
 		for {
 			msg := (<-ic).(message)
@@ -59,11 +56,9 @@ func testServer() {
 				continue
 			}
 
-			db.RLock()
-			c, userFound := db.m[msg.to]
-			db.RUnlock()
+			c, found := db.Lookup(msg.to)
 
-			if !userFound {
+			if !found {
 				ic <- "user '" + msg.to + "' was not found"
 				continue
 			}
