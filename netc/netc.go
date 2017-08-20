@@ -1,91 +1,53 @@
 package netc
 
 import (
-	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
-	"test/netc"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gorilla/websocket"
 )
 
-func testRealWorld() {
-	go testServer()
-	go testClient()
-	go testClient()
-	go testClient()
+type safeheap struct {
+	sync.Mutex
+	heap []interface{}
 }
 
-//
-//
-//
-
-// this is a shared structure
-
-type login struct {
-    key    string
-    secret string
-}
-
-type msg struct {
-	to   string
-	body string
-}
-
-type database struct {
-    sync.RWMutex
-	lookup map[string]chan interface{}
-}
-
-// there is one of this
-
-func testServer() {
-    netc.Connect(8080)
-    
-	db := database{lookup: make(map[string]chan interface{})}
-    
-	go func() {
-		ic := netc.Interface()
-        l := <-ic
-		db.Lock()
-		db.lookup[l.key] = ic
-		db.Unlock()
-		for {
-		    <-ic
-		}
-    }()
-}
-
-// there are three of these
-
-func testClient() {
-	netc.Connect(8080, "localhost")
-	ic := netc.Interface()
-	ic <- login{"alxndrthegrt91", "*******"}
-}
-
-//
-//
-//
-
-type Type struct {
+var (
 	endpoint interface{}
 
-	ints     []interface{}
-	intsLock sync.Mutex
-}
+	interfaces safeheap
+	ints       safeheap
+)
 
-func (t *Type) Int(buf ...int) (ic chan int) {
-	t.intsLock.Lock()
-	id := len(t.ints)
+// Interface creates an interface channel in the net space.
+func Interface(buf ...int) (ic chan interface{}) {
+	interfaces.Lock()
+	id := len(interfaces.heap)
 
 	if len(buf) < 1 {
-		t.sync(netint, 0, id)
+		netsync(netint, 0, id)
+		ic = make(chan interface{})
+		interfaces.heap = append(interfaces.heap, nil)
+	} else {
+		ic = make(chan interface{}, buf[0])
+	}
+
+	return
+}
+
+// Int creates an int channel in the net space.
+func Int(buf ...int) (ic chan int) {
+	ints.Lock()
+	id := len(ints.heap)
+
+	if len(buf) < 1 {
+		netsync(netint, 0, id)
 		ic = make(chan int)
-		t.ints = append(t.ints, nil)
+		ints.heap = append(ints.heap, nil)
 	} else {
 		ic = make(chan int, buf[0])
 	}
@@ -99,15 +61,22 @@ type server struct {
 	errs []error
 }
 
-// New creates a network-based channel.
-func New(port int, host ...string) *Type {
-	t := &Type{}
-	if len(host) < 1 {
-		t.endpoint = initServer(port)
-	} else {
-		t.endpoint = initClient(host[0], port)
+// Connect creates a network-based channel.
+func Connect(addr string) {
+	hostPort := strings.Split(addr, ":")
+	if len(hostPort) != 2 {
+		panic(`Connect addr format must be "[host]:port"`)
 	}
-	return t
+	host := hostPort[0]
+	port, err := strconv.Atoi(hostPort[1])
+	if err != nil {
+		panic(err)
+	}
+	if len(host) < 1 {
+		endpoint = initServer(port)
+	} else {
+		endpoint = initClient(host, port)
+	}
 }
 
 func initClient(host string, port int) *client {
@@ -127,10 +96,10 @@ const (
 	netstring
 )
 
-func (t *Type) sync(nt nettype, buf, id int) {
+func netsync(nt nettype, buf, id int) {
 	switch nt {
 	case netint:
-		switch sc := t.endpoint.(type) {
+		switch endpoint.(type) {
 		case *server:
 			//
 			// syncs channel with all client versions
@@ -140,7 +109,7 @@ func (t *Type) sync(nt nettype, buf, id int) {
 			// syncs channel with server's version
 			//
 		default:
-			panic(errors.New("Type.sync: unable to convert endpoint to type"))
+			panic("sync: unable to convert endpoint to type")
 		}
 	}
 }
