@@ -73,8 +73,11 @@ func testServer() {
 func testClient() {
 	netc.Connect("localhost:6969")
 	ic := netc.Interface()
+
 	ic <- login{"alxndrthegrt91", "*******"}
-	ic <- message{body: "hey there!"}
+
+	ic <- message{"alxndrthegrt91", "hey there, bud!"}
+
 	js.Global.Call("alert", <-ic)
 }
 
