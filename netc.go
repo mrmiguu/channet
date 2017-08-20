@@ -26,36 +26,36 @@ func testRealWorld() {
 // this is a shared structure
 
 type login struct {
-    name string
-    pass string
+    key    string
+    secret string
 }
 
-type user struct {
+type msg struct {
+	to   string
+	body string
 }
 
 type database struct {
     sync.RWMutex
-    lookup map[string]chan user
+	lookup map[string]chan interface{}
 }
 
 // there is one of this
 
 func testServer() {
-	netc.Connect(8080)
+    netc.Connect(8080)
     
-    db := database{lookup: map[string]user{}}
+	db := database{lookup: make(map[string]chan interface{})}
     
-    go func() {
-        lc := make(chan login)
-        netc.Make(lc)
-        l := <-lc // blocks until a new user channel is sync'd remotely
-        
-        uc := make(chan user)
-        netc.Make(uc)
-        db.lookup[l.name] = uc
-        //
-        // work in progress
-        //
+	go func() {
+		ic := netc.Interface()
+        l := <-ic
+		db.Lock()
+		db.lookup[l.key] = ic
+		db.Unlock()
+		for {
+		    <-ic
+		}
     }()
 }
 
@@ -63,13 +63,8 @@ func testServer() {
 
 func testClient() {
 	netc.Connect(8080, "localhost")
-    
-    lc := make(chan login)
-    netc.Make(lc)
-    lc <- login{"alxndrthegrt91", "*******"}
-    //
-    // work in progress
-    //
+	ic := netc.Interface()
+	ic <- login{"alxndrthegrt91", "*******"}
 }
 
 //
