@@ -42,30 +42,31 @@ func testServer() {
 
 	db := safedb.New()
 
-	go func() {
+	for {
 		ic := netc.Interface()
-		lgn := (<-ic).(login)
+		lgn := (<-ic).(login) // blocks until the newest interface network channel sends login info
+		go func() {
+			db.Put(lgn.key, ic)
 
-		db.Put(lgn.key, ic)
+			for {
+				msg := (<-ic).(message)
 
-		for {
-			msg := (<-ic).(message)
+				if len(msg.to) < 1 {
+					fmt.Println(msg.body) // no 'to'; meant for server
+					continue
+				}
 
-			if len(msg.to) < 1 {
-				fmt.Println(msg.body) // no 'to'; meant for server
-				continue
+				c, found := db.Lookup(msg.to)
+
+				if !found {
+					ic <- "user '" + msg.to + "' was not found"
+					continue
+				}
+
+				c <- lgn.key + `: "` + msg.body + `"` // response to player
 			}
-
-			c, found := db.Lookup(msg.to)
-
-			if !found {
-				ic <- "user '" + msg.to + "' was not found"
-				continue
-			}
-
-			c <- lgn.key + `: "` + msg.body + `"` // response to player
-		}
-	}()
+		}()
+	}
 }
 
 // there are three of these
