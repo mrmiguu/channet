@@ -1,67 +1,16 @@
-package netc
+package channet
 
 import (
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gorilla/websocket"
 )
 
-type safeheap struct {
-	sync.Mutex
-	heap []interface{}
-}
-
-var (
-	endpoint interface{}
-
-	interfaces safeheap
-	ints       safeheap
-)
-
-// Interface creates an interface channel in the net space.
-func Interface(buf ...int) (ic chan interface{}) {
-	interfaces.Lock()
-	id := len(interfaces.heap)
-
-	if len(buf) < 1 {
-		netsync(netint, 0, id)
-		ic = make(chan interface{})
-		interfaces.heap = append(interfaces.heap, nil)
-	} else {
-		ic = make(chan interface{}, buf[0])
-	}
-
-	return
-}
-
-// Int creates an int channel in the net space.
-func Int(buf ...int) (ic chan int) {
-	ints.Lock()
-	id := len(ints.heap)
-
-	if len(buf) < 1 {
-		netsync(netint, 0, id)
-		ic = make(chan int)
-		ints.heap = append(ints.heap, nil)
-	} else {
-		ic = make(chan int, buf[0])
-	}
-
-	return
-}
-
-type client struct{}
-type server struct {
-	u    websocket.Upgrader
-	errs []error
-}
-
-// Connect creates a network-based channel.
+// Connect creates a network-based channel at a specific level.
 func Connect(addr string) {
 	hostPort := strings.Split(addr, ":")
 	if len(hostPort) != 2 {
@@ -79,6 +28,12 @@ func Connect(addr string) {
 	}
 }
 
+type client struct{}
+type server struct {
+	u    websocket.Upgrader
+	errs []error
+}
+
 func initClient(host string, port int) *client {
 	sck := js.Global.Get("WebSocket").New("ws://" + host + ":" + strconv.Itoa(port) + "/walk")
 	c := &client{}
@@ -87,31 +42,6 @@ func initClient(host string, port int) *client {
 	sck.Set("onmessage", c.onMessage)
 	sck.Set("onerror", c.onError)
 	return c
-}
-
-type nettype int
-
-const (
-	netint nettype = iota
-	netstring
-)
-
-func netsync(nt nettype, buf, id int) {
-	switch nt {
-	case netint:
-		switch endpoint.(type) {
-		case *server:
-			//
-			// syncs channel with all client versions
-			//
-		case *client:
-			//
-			// syncs channel with server's version
-			//
-		default:
-			panic("sync: unable to convert endpoint to type")
-		}
-	}
 }
 
 func (c *client) onOpen()    {}
@@ -150,3 +80,72 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// type safeheap struct {
+// 	sync.Mutex
+// 	heap []interface{}
+// }
+
+// var (
+// 	endpoint interface{}
+
+// 	interfaces safeheap
+// 	ints       safeheap
+// )
+
+// // Interface creates an interface channel in the net space.
+// func Interface(buf ...int) (ic chan interface{}) {
+// 	interfaces.Lock()
+// 	id := len(interfaces.heap)
+
+// 	if len(buf) < 1 {
+// 		netsync(netint, 0, id)
+// 		ic = make(chan interface{})
+// 		interfaces.heap = append(interfaces.heap, nil)
+// 	} else {
+// 		ic = make(chan interface{}, buf[0])
+// 	}
+
+// 	return
+// }
+
+// // Int creates an int channel in the net space.
+// func Int(buf ...int) (ic chan int) {
+// 	ints.Lock()
+// 	id := len(ints.heap)
+
+// 	if len(buf) < 1 {
+// 		netsync(netint, 0, id)
+// 		ic = make(chan int)
+// 		ints.heap = append(ints.heap, nil)
+// 	} else {
+// 		ic = make(chan int, buf[0])
+// 	}
+
+// 	return
+// }
+
+// type nettype int
+
+// const (
+// 	netint nettype = iota
+// 	netstring
+// )
+
+// func netsync(nt nettype, buf, id int) {
+// 	switch nt {
+// 	case netint:
+// 		switch endpoint.(type) {
+// 		case *server:
+// 			//
+// 			// syncs channel with all client versions
+// 			//
+// 		case *client:
+// 			//
+// 			// syncs channel with server's version
+// 			//
+// 		default:
+// 			panic("sync: unable to convert endpoint to type")
+// 		}
+// 	}
+// }
