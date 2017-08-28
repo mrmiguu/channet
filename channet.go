@@ -1,17 +1,3 @@
-//
-//
-//
-
-// IFF: data race due to socket R/W on interfacing channel
-// (fix) when reading from channel, select based on gid;
-//       the gid of the socket-writing goroutine will wait
-//       until the user has read the channel and then written
-//       to it, releasing it out onto the wire
-
-//
-//
-//
-
 package channet
 
 import (
@@ -156,10 +142,12 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		for {
+			fmt.Println(`c.ReadMessage()...`)
 			_, b, err := c.ReadMessage()
 			if err != nil {
 				panic(err)
 			}
+			fmt.Println(`c.ReadMessage() !`, string(b))
 
 			parts := strings.Split(string(b), "$")
 			pattern, index, message := parts[0], parts[1], parts[2]
@@ -167,8 +155,6 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				panic(err)
 			}
-
-			fmt.Println(message)
 
 			handlerm.RLock()
 			handlers[pattern].wstringm.RLock()
@@ -183,10 +169,12 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		for pattern, handler := range handlers {
 			handler.rstringm.RLock()
 			for i, rstring := range handler.rstrings {
+				fmt.Println(`c.WriteMessage()...`)
 				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring))
 				if err != nil {
 					panic(err)
 				}
+				fmt.Println(`c.WriteMessage() !`)
 			}
 			handler.rstringm.RUnlock()
 		}
