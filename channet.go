@@ -15,6 +15,7 @@
 package channet
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,7 +96,7 @@ type server struct {
 
 func initServer(url string) *server {
 
-	s := &server{u: websocket.Upgrader{}}
+	s := &server{u: websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}}
 
 	http.HandleFunc("/channet", s.onConnection)
 
@@ -167,6 +168,8 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 
+			fmt.Println(message)
+
 			handlerm.RLock()
 			handlers[pattern].wstringm.RLock()
 			handlers[pattern].wstrings[i] <- message
@@ -175,21 +178,19 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	go func() {
-		for {
-			handlerm.RLock()
-			for pattern, handler := range handlers {
-				handler.rstringm.RLock()
-				for i, rstring := range handler.rstrings {
-					err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring))
-					if err != nil {
-						panic(err)
-					}
+	for {
+		handlerm.RLock()
+		for pattern, handler := range handlers {
+			handler.rstringm.RLock()
+			for i, rstring := range handler.rstrings {
+				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring))
+				if err != nil {
+					panic(err)
 				}
-				handler.rstringm.RUnlock()
 			}
-			handlerm.RUnlock()
+			handler.rstringm.RUnlock()
 		}
-	}()
+		handlerm.RUnlock()
+	}
 
 }
