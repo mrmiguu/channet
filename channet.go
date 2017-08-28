@@ -1,7 +1,6 @@
 package channet
 
 import (
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,75 +9,130 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Connect creates a network-based channel at a specific level.
-func Connect(addr string) {
-	hostPort := strings.Split(addr, ":")
-	if len(hostPort) != 2 {
-		panic(`Connect addr format must be "[host]:port"`)
-	}
-	host := hostPort[0]
-	port, err := strconv.Atoi(hostPort[1])
-	if err != nil {
-		panic(err)
-	}
-	if len(host) < 1 {
-		endpoint = initServer(port)
+func Connect(url string) {
+
+	if strings.Index(url, ":") > 0 {
+		endpoint = initClient(url)
 	} else {
-		endpoint = initClient(host, port)
+		endpoint = initServer(url)
 	}
+
 }
 
-type client struct{}
+type Handler struct {
+	stringcs []chan string
+}
+
+func (h *Handler) String() chan string {
+	stringc := make(chan string)
+	h.stringcs = append(h.stringcs, stringc)
+	return stringc
+}
+
+func New(pattern string) *Handler {
+	h := Handler{}
+	handlers[pattern] = h
+	return &h
+}
+
+var (
+	endpoint interface{}
+	handlers map[string]Handler
+)
+
+type client struct {
+	ws *js.Object
+}
+
+func initClient(url string) *client {
+
+	ws := js.Global.Get("WebSocket").New("ws://" + url + "/channet")
+
+	c := &client{ws: ws}
+
+	ws.Set("onopen", func(evt *js.Object) { c.onOpen(evt.Get("data").String()) })
+	ws.Set("onclose", func(evt *js.Object) { c.onClose(evt.Get("data").String()) })
+	ws.Set("onmessage", func(evt *js.Object) { c.onMessage(evt.Get("data").String()) })
+	ws.Set("onerror", func(evt *js.Object) { c.onError(evt.Get("data").String()) })
+
+	return c
+
+}
+
 type server struct {
 	u    websocket.Upgrader
 	errs []error
 }
 
-func initClient(host string, port int) *client {
-	sck := js.Global.Get("WebSocket").New("ws://" + host + ":" + strconv.Itoa(port) + "/walk")
-	c := &client{}
-	sck.Set("onopen", c.onOpen)
-	sck.Set("onclose", c.onClose)
-	sck.Set("onmessage", c.onMessage)
-	sck.Set("onerror", c.onError)
-	return c
-}
+func initServer(url string) *server {
 
-func (c *client) onOpen()    {}
-func (c *client) onClose()   {}
-func (c *client) onMessage() {}
-func (c *client) onError()   {}
-
-func initServer(port int) *server {
 	s := &server{u: websocket.Upgrader{}}
-	http.HandleFunc("/walk", s.onConnection)
-	err := http.ListenAndServe(":"+strconv.Itoa(port), nil)
+
+	http.HandleFunc("/channet", s.onConnection)
+
+	err := http.ListenAndServe(url, nil)
 	if err != nil {
 		panic(err)
 	}
+
 	return s
+
 }
 
+func (c *client) onOpen(data string)    {}
+func (c *client) onClose(data string)   {}
+func (c *client) onMessage(data string) {}
+func (c *client) onError(data string)   {}
+
 func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
+
 	c, err := s.u.Upgrade(w, r, nil)
 	if err != nil {
 		panic(err)
 	}
 	defer c.Close()
 
-	for {
-		msgtype, message, err := c.ReadMessage()
+	go func() {
+		_, b, err := c.ReadMessage()
 		if err != nil {
 			panic(err)
 		}
 
-		log.Printf("recv: %s", message)
-
-		err = c.WriteMessage(msgtype, message)
+		parts := strings.Split(string(b), "$")
+		pattern, index, message := parts[0], parts[1], parts[2]
+		i, err := strconv.Atoi(index)
 		if err != nil {
 			panic(err)
 		}
-	}
+
+		handlers[pattern].stringcs[i] <- message
+	}()
+
+	go func() {
+		for pattern, handler := range handlers {
+			for i, stringc := range handler.stringcs {
+				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-stringc))
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+	}()
+
+	// for {
+	// 	msgtype, message, err := c.ReadMessage()
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+
+	// 	log.Printf("recv: %s", message)
+
+	// 	err = c.WriteMessage(msgtype, message)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// }
+
 }
 
 // type safeheap struct {
