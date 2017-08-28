@@ -1,3 +1,17 @@
+//
+//
+//
+
+// IFF: data race due to socket R/W on interfacing channel
+// (fix) when reading from channel, select based on gid;
+//       the gid of the socket-writing goroutine will wait
+//       until the user has read the channel and then written
+//       to it, releasing it out onto the wire
+
+//
+//
+//
+
 package channet
 
 import (
@@ -79,10 +93,34 @@ func initServer(url string) *server {
 
 }
 
-func (c *client) onOpen(data string)    {}
-func (c *client) onClose(data string)   {}
-func (c *client) onMessage(data string) {}
-func (c *client) onError(data string)   {}
+func (c *client) onOpen(data string) {
+
+	for {
+		for pattern, handler := range handlers {
+			for i, stringc := range handler.stringcs {
+				c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+<-stringc)
+			}
+		}
+	}
+
+}
+
+func (c *client) onClose(data string) {}
+
+func (c *client) onMessage(data string) {
+
+	parts := strings.Split(data, "$")
+	pattern, index, message := parts[0], parts[1], parts[2]
+	i, err := strconv.Atoi(index)
+	if err != nil {
+		panic(err)
+	}
+
+	handlers[pattern].stringcs[i] <- message
+
+}
+
+func (c *client) onError(data string) {}
 
 func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -93,113 +131,34 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 
 	go func() {
-		_, b, err := c.ReadMessage()
-		if err != nil {
-			panic(err)
-		}
+		for {
+			_, b, err := c.ReadMessage()
+			if err != nil {
+				panic(err)
+			}
 
-		parts := strings.Split(string(b), "$")
-		pattern, index, message := parts[0], parts[1], parts[2]
-		i, err := strconv.Atoi(index)
-		if err != nil {
-			panic(err)
-		}
+			parts := strings.Split(string(b), "$")
+			pattern, index, message := parts[0], parts[1], parts[2]
+			i, err := strconv.Atoi(index)
+			if err != nil {
+				panic(err)
+			}
 
-		handlers[pattern].stringcs[i] <- message
+			handlers[pattern].stringcs[i] <- message
+		}
 	}()
 
 	go func() {
-		for pattern, handler := range handlers {
-			for i, stringc := range handler.stringcs {
-				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-stringc))
-				if err != nil {
-					panic(err)
+		for {
+			for pattern, handler := range handlers {
+				for i, stringc := range handler.stringcs {
+					err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-stringc))
+					if err != nil {
+						panic(err)
+					}
 				}
 			}
 		}
 	}()
 
-	// for {
-	// 	msgtype, message, err := c.ReadMessage()
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-
-	// 	log.Printf("recv: %s", message)
-
-	// 	err = c.WriteMessage(msgtype, message)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// }
-
 }
-
-// type safeheap struct {
-// 	sync.Mutex
-// 	heap []interface{}
-// }
-
-// var (
-// 	endpoint interface{}
-
-// 	interfaces safeheap
-// 	ints       safeheap
-// )
-
-// // Interface creates an interface channel in the net space.
-// func Interface(buf ...int) (ic chan interface{}) {
-// 	interfaces.Lock()
-// 	id := len(interfaces.heap)
-
-// 	if len(buf) < 1 {
-// 		netsync(netint, 0, id)
-// 		ic = make(chan interface{})
-// 		interfaces.heap = append(interfaces.heap, nil)
-// 	} else {
-// 		ic = make(chan interface{}, buf[0])
-// 	}
-
-// 	return
-// }
-
-// // Int creates an int channel in the net space.
-// func Int(buf ...int) (ic chan int) {
-// 	ints.Lock()
-// 	id := len(ints.heap)
-
-// 	if len(buf) < 1 {
-// 		netsync(netint, 0, id)
-// 		ic = make(chan int)
-// 		ints.heap = append(ints.heap, nil)
-// 	} else {
-// 		ic = make(chan int, buf[0])
-// 	}
-
-// 	return
-// }
-
-// type nettype int
-
-// const (
-// 	netint nettype = iota
-// 	netstring
-// )
-
-// func netsync(nt nettype, buf, id int) {
-// 	switch nt {
-// 	case netint:
-// 		switch endpoint.(type) {
-// 		case *server:
-// 			//
-// 			// syncs channel with all client versions
-// 			//
-// 		case *client:
-// 			//
-// 			// syncs channel with server's version
-// 			//
-// 		default:
-// 			panic("sync: unable to convert endpoint to type")
-// 		}
-// 	}
-// }
