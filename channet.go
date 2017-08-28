@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gorilla/websocket"
@@ -34,24 +35,38 @@ func Connect(url string) {
 }
 
 type Handler struct {
-	stringcs []chan string
+	rstrings []<-chan string
+	rstringm sync.RWMutex
+	wstrings []chan<- string
+	wstringm sync.RWMutex
 }
 
-func (h *Handler) String() chan string {
-	stringc := make(chan string)
-	h.stringcs = append(h.stringcs, stringc)
-	return stringc
+func (h *Handler) String() (<-chan string, chan<- string) {
+	c := make(chan string)
+
+	h.rstringm.Lock()
+	h.rstrings = append(h.rstrings, c)
+	h.rstringm.Unlock()
+
+	h.wstringm.Lock()
+	h.wstrings = append(h.wstrings, c)
+	h.wstringm.Unlock()
+
+	return c, c
 }
 
 func New(pattern string) *Handler {
-	h := Handler{}
+	h := &Handler{}
+	handlerm.Lock()
 	handlers[pattern] = h
-	return &h
+	handlerm.Unlock()
+	return h
 }
 
 var (
 	endpoint interface{}
-	handlers map[string]Handler
+	handlers map[string]*Handler
+	handlerm sync.RWMutex
 )
 
 type client struct {
@@ -96,11 +111,15 @@ func initServer(url string) *server {
 func (c *client) onOpen(data string) {
 
 	for {
+		handlerm.RLock()
 		for pattern, handler := range handlers {
-			for i, stringc := range handler.stringcs {
-				c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+<-stringc)
+			handler.rstringm.RLock()
+			for i, rstring := range handler.rstrings {
+				c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+<-rstring)
 			}
+			handler.rstringm.RUnlock()
 		}
+		handlerm.RUnlock()
 	}
 
 }
@@ -116,7 +135,11 @@ func (c *client) onMessage(data string) {
 		panic(err)
 	}
 
-	handlers[pattern].stringcs[i] <- message
+	handlerm.RLock()
+	handlers[pattern].wstringm.RLock()
+	handlers[pattern].wstrings[i] <- message
+	handlers[pattern].wstringm.RUnlock()
+	handlerm.RUnlock()
 
 }
 
@@ -144,20 +167,28 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 
-			handlers[pattern].stringcs[i] <- message
+			handlerm.RLock()
+			handlers[pattern].wstringm.RLock()
+			handlers[pattern].wstrings[i] <- message
+			handlers[pattern].wstringm.RUnlock()
+			handlerm.RUnlock()
 		}
 	}()
 
 	go func() {
 		for {
+			handlerm.RLock()
 			for pattern, handler := range handlers {
-				for i, stringc := range handler.stringcs {
-					err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-stringc))
+				handler.rstringm.RLock()
+				for i, rstring := range handler.rstrings {
+					err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring))
 					if err != nil {
 						panic(err)
 					}
 				}
+				handler.rstringm.RUnlock()
 			}
+			handlerm.RUnlock()
 		}
 	}()
 
