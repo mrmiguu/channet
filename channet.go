@@ -1,6 +1,7 @@
 package channet
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,7 +26,13 @@ func Connect(url string) {
 
 func New(pattern string) *Handler {
 
+	if js.Global != nil && js.Global.Call != nil {
+		js.Global.Call("alert", "New :: handlerm.RLock()...")
+	}
 	handlerm.RLock()
+	if js.Global != nil && js.Global.Call != nil {
+		js.Global.Call("alert", "New :: handlerm.RLock() !")
+	}
 	_, exists := handlers[pattern]
 	handlerm.RUnlock()
 
@@ -35,11 +42,15 @@ func New(pattern string) *Handler {
 
 	h := &Handler{}
 
-	// js.Global.Call("alert", "New :: handlerm.Lock()...")
+	if js.Global != nil && js.Global.Call != nil {
+		js.Global.Call("alert", "New :: handlerm.Lock()...")
+	}
 	// fmt.Println(`New handler lock...`)
 	handlerm.Lock()
+	if js.Global != nil && js.Global.Call != nil {
+		js.Global.Call("alert", "New :: handlerm.Lock() !")
+	}
 	// fmt.Println(`New handler lock !`)
-	// js.Global.Call("alert", "New :: handlerm.Lock() !")
 	handlers[pattern] = h
 	// fmt.Println(`handlers[`+pattern+`] =`, handlers[pattern])
 	handlerm.Unlock()
@@ -77,10 +88,10 @@ func initClient(url string) *client {
 
 	c := &client{ws: ws}
 
-	ws.Set("onopen", func(evt *js.Object) { c.onOpen(evt.Get("data").String()) })
-	ws.Set("onclose", func(evt *js.Object) { c.onClose(evt.Get("data").String()) })
-	ws.Set("onmessage", func(evt *js.Object) { c.onMessage(evt.Get("data").String()) })
-	ws.Set("onerror", func(evt *js.Object) { c.onError(evt.Get("data").String()) })
+	ws.Set("onopen", func(evt *js.Object) { go c.onOpen(evt.Get("data").String()) })
+	ws.Set("onclose", func(evt *js.Object) { go c.onClose(evt.Get("data").String()) })
+	ws.Set("onmessage", func(evt *js.Object) { go c.onMessage(evt.Get("data").String()) })
+	ws.Set("onerror", func(evt *js.Object) { go c.onError(evt.Get("data").String()) })
 
 	return c
 }
@@ -111,9 +122,13 @@ func (c *client) onOpen(data string) {
 			handler.rstringm.RLock()
 			// js.Global.Call("alert", "onOpen :: handler.rstringm.Lock() !")
 			for i, rstring := range handler.rstrings {
-				// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...)...")
-				c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+<-rstring.c)
-				// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...) !")
+				select {
+				case s := <-rstring.c:
+					// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...)...")
+					c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+s)
+					// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...) !")
+				default:
+				}
 			}
 			handler.rstringm.RUnlock()
 		}
@@ -121,10 +136,13 @@ func (c *client) onOpen(data string) {
 	}
 }
 
-func (c *client) onClose(data string) {}
+func (c *client) onClose(data string) {
+	js.Global.Call("alert", "[WS CLOSED]")
+}
 
 func (c *client) onMessage(data string) {
 
+	js.Global.Call("alert", "onMessage !")
 	parts := strings.Split(data, "$")
 	pattern, index, message := parts[0], parts[1], parts[2]
 	i, err := strconv.Atoi(index)
@@ -138,12 +156,16 @@ func (c *client) onMessage(data string) {
 	// js.Global.Call("alert", "onMessage :: handlers[pattern].wstringm.Lock()...")
 	handlers[pattern].wstringm.RLock()
 	// js.Global.Call("alert", "onMessage :: handlers[pattern].wstringm.Lock() !")
+	js.Global.Call("alert", "onMessage :: handlers[pattern].wstrings[i].c <- message...")
 	handlers[pattern].wstrings[i].c <- message
+	js.Global.Call("alert", "onMessage :: handlers[pattern].wstrings[i].c <- message !")
 	handlers[pattern].wstringm.RUnlock()
 	handlerm.RUnlock()
 }
 
-func (c *client) onError(data string) {}
+func (c *client) onError(data string) {
+	js.Global.Call("alert", "[WS ERROR]")
+}
 
 func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -152,6 +174,7 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 	defer c.Close()
+	fmt.Println(`onConnection !`)
 
 	go func() {
 		for {
@@ -184,12 +207,17 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		for pattern, handler := range handlers {
 			handler.rstringm.RLock()
 			for i, rstring := range handler.rstrings {
-				// fmt.Println(`c.WriteMessage()...`)
-				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring.c))
-				if err != nil {
-					return
+				// fmt.Println(`len(handler.rstrings)=`, len(handler.rstrings))
+				select {
+				case s := <-rstring.c:
+					fmt.Println(`c.WriteMessage()...`)
+					err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+s))
+					if err != nil {
+						return
+					}
+					fmt.Println(`c.WriteMessage() !`)
+				default:
 				}
-				// fmt.Println(`c.WriteMessage() !`)
 			}
 			handler.rstringm.RUnlock()
 		}
