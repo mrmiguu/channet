@@ -10,38 +10,17 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func Connect(url string) {
+var (
+	handlers = map[string]*Handler{}
+	handlerm sync.RWMutex
+)
 
+func Connect(url string) {
 	if strings.Index(url, ":") > 0 {
 		go initClient(url)
 	} else {
 		go initServer(url)
 	}
-}
-
-func (h *Handler) String(length ...uint) (<-chan string, chan<- string) {
-
-	l := 0
-	if len(length) > 0 {
-		l = int(length[0])
-	}
-
-	r := make(<-chan string, l)
-	w := make(chan<- string, l)
-
-	// js.Global.Call("alert", "String :: h.rstringm.Lock()...")
-	h.rstringm.Lock()
-	// js.Global.Call("alert", "String :: h.rstringm.Lock()!")
-	h.rstrings = append(h.rstrings, rstring{r, 1})
-	h.rstringm.Unlock()
-
-	// js.Global.Call("alert", "String :: h.wstringm.Lock()...")
-	h.wstringm.Lock()
-	// js.Global.Call("alert", "String :: h.wstringm.Lock()!")
-	h.wstrings = append(h.wstrings, wstring{w, 1})
-	h.wstringm.Unlock()
-
-	return r, w
 }
 
 func New(pattern string) *Handler {
@@ -68,11 +47,29 @@ func New(pattern string) *Handler {
 	return h
 }
 
-var (
-	endpoint interface{}
-	handlers = map[string]*Handler{}
-	handlerm sync.RWMutex
-)
+func (h *Handler) String(length ...int) (<-chan string, chan<- string) {
+
+	l := 0
+	if len(length) > 0 {
+		l = length[0]
+	}
+
+	rw := make(chan string, l)
+
+	// js.Global.Call("alert", "String :: h.rstringm.Lock()...")
+	h.rstringm.Lock()
+	// js.Global.Call("alert", "String :: h.rstringm.Lock()!")
+	h.rstrings = append(h.rstrings, rstring{rw, 1})
+	h.rstringm.Unlock()
+
+	// js.Global.Call("alert", "String :: h.wstringm.Lock()...")
+	h.wstringm.Lock()
+	// js.Global.Call("alert", "String :: h.wstringm.Lock()!")
+	h.wstrings = append(h.wstrings, wstring{rw, 1})
+	h.wstringm.Unlock()
+
+	return rw, rw
+}
 
 func initClient(url string) *client {
 
