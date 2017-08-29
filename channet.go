@@ -1,7 +1,6 @@
 package channet
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,9 +13,9 @@ import (
 func Connect(url string) {
 
 	if strings.Index(url, ":") > 0 {
-		endpoint = initClient(url)
+		go initClient(url)
 	} else {
-		endpoint = initServer(url)
+		go initServer(url)
 	}
 
 }
@@ -31,11 +30,15 @@ type Handler struct {
 func (h *Handler) String() (<-chan string, chan<- string) {
 	c := make(chan string)
 
+	// js.Global.Call("alert", "String :: h.rstringm.Lock()...")
 	h.rstringm.Lock()
+	// js.Global.Call("alert", "String :: h.rstringm.Lock()!")
 	h.rstrings = append(h.rstrings, c)
 	h.rstringm.Unlock()
 
+	// js.Global.Call("alert", "String :: h.wstringm.Lock()...")
 	h.wstringm.Lock()
+	// js.Global.Call("alert", "String :: h.wstringm.Lock()!")
 	h.wstrings = append(h.wstrings, c)
 	h.wstringm.Unlock()
 
@@ -44,15 +47,20 @@ func (h *Handler) String() (<-chan string, chan<- string) {
 
 func New(pattern string) *Handler {
 	h := &Handler{}
+	// js.Global.Call("alert", "New :: handlerm.Lock()...")
+	// fmt.Println(`New handler lock...`)
 	handlerm.Lock()
+	// fmt.Println(`New handler lock !`)
+	// js.Global.Call("alert", "New :: handlerm.Lock() !")
 	handlers[pattern] = h
+	// fmt.Println(`handlers[`+pattern+`] =`, handlers[pattern])
 	handlerm.Unlock()
 	return h
 }
 
 var (
 	endpoint interface{}
-	handlers map[string]*Handler
+	handlers = map[string]*Handler{}
 	handlerm sync.RWMutex
 )
 
@@ -98,11 +106,18 @@ func initServer(url string) *server {
 func (c *client) onOpen(data string) {
 
 	for {
+		// js.Global.Call("alert", "onOpen :: handlerm.Lock()...")
 		handlerm.RLock()
+		// js.Global.Call("alert", "len(handlers)="+strconv.Itoa(len(handlers)))
+		// js.Global.Call("alert", "onOpen :: handlerm.Lock() !")
 		for pattern, handler := range handlers {
+			// js.Global.Call("alert", "onOpen :: handler.rstringm.Lock()...")
 			handler.rstringm.RLock()
+			// js.Global.Call("alert", "onOpen :: handler.rstringm.Lock() !")
 			for i, rstring := range handler.rstrings {
+				// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...)...")
 				c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+<-rstring)
+				// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...) !")
 			}
 			handler.rstringm.RUnlock()
 		}
@@ -122,8 +137,12 @@ func (c *client) onMessage(data string) {
 		panic(err)
 	}
 
+	// js.Global.Call("alert", "onMessage :: handlerm.Lock()...")
 	handlerm.RLock()
+	// js.Global.Call("alert", "onMessage :: handlerm.Lock() !")
+	// js.Global.Call("alert", "onMessage :: handlers[pattern].wstringm.Lock()...")
 	handlers[pattern].wstringm.RLock()
+	// js.Global.Call("alert", "onMessage :: handlers[pattern].wstringm.Lock() !")
 	handlers[pattern].wstrings[i] <- message
 	handlers[pattern].wstringm.RUnlock()
 	handlerm.RUnlock()
@@ -142,12 +161,12 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		for {
-			fmt.Println(`c.ReadMessage()...`)
+			// fmt.Println(`c.ReadMessage()...`)
 			_, b, err := c.ReadMessage()
 			if err != nil {
-				panic(err)
+				return
 			}
-			fmt.Println(`c.ReadMessage() !`, string(b))
+			// fmt.Println(`c.ReadMessage() !`, string(b))
 
 			parts := strings.Split(string(b), "$")
 			pattern, index, message := parts[0], parts[1], parts[2]
@@ -155,6 +174,8 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				panic(err)
 			}
+
+			// fmt.Println("pattern ::", pattern)
 
 			handlerm.RLock()
 			handlers[pattern].wstringm.RLock()
@@ -169,12 +190,12 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		for pattern, handler := range handlers {
 			handler.rstringm.RLock()
 			for i, rstring := range handler.rstrings {
-				fmt.Println(`c.WriteMessage()...`)
+				// fmt.Println(`c.WriteMessage()...`)
 				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring))
 				if err != nil {
-					panic(err)
+					return
 				}
-				fmt.Println(`c.WriteMessage() !`)
+				// fmt.Println(`c.WriteMessage() !`)
 			}
 			handler.rstringm.RUnlock()
 		}
