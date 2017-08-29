@@ -17,36 +17,45 @@ func Connect(url string) {
 	} else {
 		go initServer(url)
 	}
-
 }
 
-type Handler struct {
-	rstrings []<-chan string
-	rstringm sync.RWMutex
-	wstrings []chan<- string
-	wstringm sync.RWMutex
-}
+func (h *Handler) String(length ...uint) (<-chan string, chan<- string) {
 
-func (h *Handler) String() (<-chan string, chan<- string) {
-	c := make(chan string)
+	l := 0
+	if len(length) > 0 {
+		l = int(length[0])
+	}
+
+	r := make(<-chan string, l)
+	w := make(chan<- string, l)
 
 	// js.Global.Call("alert", "String :: h.rstringm.Lock()...")
 	h.rstringm.Lock()
 	// js.Global.Call("alert", "String :: h.rstringm.Lock()!")
-	h.rstrings = append(h.rstrings, c)
+	h.rstrings = append(h.rstrings, rstring{r, 1})
 	h.rstringm.Unlock()
 
 	// js.Global.Call("alert", "String :: h.wstringm.Lock()...")
 	h.wstringm.Lock()
 	// js.Global.Call("alert", "String :: h.wstringm.Lock()!")
-	h.wstrings = append(h.wstrings, c)
+	h.wstrings = append(h.wstrings, wstring{w, 1})
 	h.wstringm.Unlock()
 
-	return c, c
+	return r, w
 }
 
 func New(pattern string) *Handler {
+
+	handlerm.RLock()
+	_, exists := handlers[pattern]
+	handlerm.RUnlock()
+
+	if exists {
+		panic("handler `" + pattern + "` already exists")
+	}
+
 	h := &Handler{}
+
 	// js.Global.Call("alert", "New :: handlerm.Lock()...")
 	// fmt.Println(`New handler lock...`)
 	handlerm.Lock()
@@ -55,6 +64,7 @@ func New(pattern string) *Handler {
 	handlers[pattern] = h
 	// fmt.Println(`handlers[`+pattern+`] =`, handlers[pattern])
 	handlerm.Unlock()
+
 	return h
 }
 
@@ -63,10 +73,6 @@ var (
 	handlers = map[string]*Handler{}
 	handlerm sync.RWMutex
 )
-
-type client struct {
-	ws *js.Object
-}
 
 func initClient(url string) *client {
 
@@ -80,12 +86,6 @@ func initClient(url string) *client {
 	ws.Set("onerror", func(evt *js.Object) { c.onError(evt.Get("data").String()) })
 
 	return c
-
-}
-
-type server struct {
-	u    websocket.Upgrader
-	errs []error
 }
 
 func initServer(url string) *server {
@@ -100,7 +100,6 @@ func initServer(url string) *server {
 	}
 
 	return s
-
 }
 
 func (c *client) onOpen(data string) {
@@ -116,14 +115,13 @@ func (c *client) onOpen(data string) {
 			// js.Global.Call("alert", "onOpen :: handler.rstringm.Lock() !")
 			for i, rstring := range handler.rstrings {
 				// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...)...")
-				c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+<-rstring)
+				c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+<-rstring.c)
 				// js.Global.Call("alert", "onOpen :: c.ws.Call(\"send\",...) !")
 			}
 			handler.rstringm.RUnlock()
 		}
 		handlerm.RUnlock()
 	}
-
 }
 
 func (c *client) onClose(data string) {}
@@ -143,10 +141,9 @@ func (c *client) onMessage(data string) {
 	// js.Global.Call("alert", "onMessage :: handlers[pattern].wstringm.Lock()...")
 	handlers[pattern].wstringm.RLock()
 	// js.Global.Call("alert", "onMessage :: handlers[pattern].wstringm.Lock() !")
-	handlers[pattern].wstrings[i] <- message
+	handlers[pattern].wstrings[i].c <- message
 	handlers[pattern].wstringm.RUnlock()
 	handlerm.RUnlock()
-
 }
 
 func (c *client) onError(data string) {}
@@ -179,7 +176,7 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 
 			handlerm.RLock()
 			handlers[pattern].wstringm.RLock()
-			handlers[pattern].wstrings[i] <- message
+			handlers[pattern].wstrings[i].c <- message
 			handlers[pattern].wstringm.RUnlock()
 			handlerm.RUnlock()
 		}
@@ -191,7 +188,7 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 			handler.rstringm.RLock()
 			for i, rstring := range handler.rstrings {
 				// fmt.Println(`c.WriteMessage()...`)
-				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring))
+				err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+<-rstring.c))
 				if err != nil {
 					return
 				}
@@ -201,5 +198,4 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		}
 		handlerm.RUnlock()
 	}
-
 }
