@@ -24,11 +24,11 @@ type Handler struct {
 }
 
 type rstring struct {
-	c   <-chan string
+	c   chan string
 	ref int
 }
 
 type wstring struct {
-	c   chan<- string
+	c   chan string
 	ref int
 }
