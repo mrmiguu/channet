@@ -7,28 +7,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type client struct {
-	ws *js.Object
-}
-
-type server struct {
-	u    websocket.Upgrader
-	errs []error
-}
-
 type Handler struct {
-	rstrings []rstring
+	rstrings []chan string
 	rstringm sync.RWMutex
-	wstrings []wstring
+	wstrings []chan string
 	wstringm sync.RWMutex
 }
 
-type rstring struct {
-	c   chan string
-	ref int
+type client struct {
+	*js.Object
+	msgs chan string
 }
 
-type wstring struct {
-	c   chan string
-	ref int
+type server struct {
+	websocket.Upgrader
+}
+
+type connection struct {
+	*websocket.Conn
+}
+
+type socket interface {
+	To(string) error
+	From() (string, error)
 }

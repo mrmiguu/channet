@@ -8,6 +8,7 @@ import (
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gorilla/websocket"
+	"github.com/mrmiguu/jsutil"
 )
 
 var (
@@ -24,14 +25,7 @@ func Connect(url string) {
 }
 
 func New(pattern string) *Handler {
-
-	// if js.Global != nil && js.Global.Call != nil {
-	// 	js.Global.Call("alert", "New :: handlerm.RLock()...")
-	// }
 	handlerm.RLock()
-	// if js.Global != nil && js.Global.Call != nil {
-	// 	js.Global.Call("alert", "New :: handlerm.RLock() !")
-	// }
 	_, exists := handlers[pattern]
 	handlerm.RUnlock()
 
@@ -41,24 +35,14 @@ func New(pattern string) *Handler {
 
 	h := &Handler{}
 
-	// if js.Global != nil && js.Global.Call != nil {
-	// 	js.Global.Call("alert", "New :: handlerm.Lock()...")
-	// }
-	// fmt.Println(`New handler lock...`)
 	handlerm.Lock()
-	// if js.Global != nil && js.Global.Call != nil {
-	// 	js.Global.Call("alert", "New :: handlerm.Lock() !")
-	// }
-	// fmt.Println(`New handler lock !`)
 	handlers[pattern] = h
-	// fmt.Println(`handlers[`+pattern+`] =`, handlers[pattern])
 	handlerm.Unlock()
 
 	return h
 }
 
 func (h *Handler) String(length ...int) (<-chan string, chan<- string) {
-
 	l := 0
 	if len(length) > 0 {
 		l = length[0]
@@ -67,38 +51,90 @@ func (h *Handler) String(length ...int) (<-chan string, chan<- string) {
 	r := make(chan string, l)
 	w := make(chan string, l)
 
-	// js.Global.Call("alert", "String :: h.rstringm.Lock()...")
 	h.rstringm.Lock()
-	// js.Global.Call("alert", "String :: h.rstringm.Lock()!")
-	h.rstrings = append(h.rstrings, rstring{r, 1})
+	h.rstrings = append(h.rstrings, r)
 	h.rstringm.Unlock()
 
-	// js.Global.Call("alert", "String :: h.wstringm.Lock()...")
 	h.wstringm.Lock()
-	// js.Global.Call("alert", "String :: h.wstringm.Lock()!")
-	h.wstrings = append(h.wstrings, wstring{w, 1})
+	h.wstrings = append(h.wstrings, w)
 	h.wstringm.Unlock()
 
 	return r, w
 }
 
-func initClient(url string) *client {
+func (c client) To(packet string) (err error) {
+	defer jsutil.OnPanic(&err)
+	c.Call("send", packet)
+	return
+}
 
+func (c connection) To(packet string) error {
+	return c.WriteMessage(websocket.TextMessage, []byte(packet))
+}
+
+func (c client) From() (string, error) {
+	return <-c.msgs, nil
+}
+
+func (c connection) From() (string, error) {
+	_, b, err := c.ReadMessage()
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func read(sck socket) {
+	pkt, err := sck.From()
+	if err != nil {
+		return
+	}
+
+	parts := strings.Split(pkt, "$")
+	pattern, index, message := parts[0], parts[1], parts[2]
+	i, err := strconv.Atoi(index)
+	if err != nil {
+		panic(err)
+	}
+
+	handlerm.RLock()
+	handlers[pattern].rstringm.RLock()
+	handlers[pattern].rstrings[i] <- message
+	handlers[pattern].rstringm.RUnlock()
+	handlerm.RUnlock()
+}
+
+func write(sck socket) {
+	handlerm.RLock()
+	for pattern, handler := range handlers {
+		handler.wstringm.RLock()
+		for i, wstring := range handler.wstrings {
+			select {
+			case s := <-wstring:
+				sck.To(pattern + "$" + strconv.Itoa(i) + "$" + s)
+			default:
+			}
+		}
+		handler.wstringm.RUnlock()
+	}
+	handlerm.RUnlock()
+}
+
+func initClient(url string) *client {
 	ws := js.Global.Get("WebSocket").New("ws://" + url + "/channet")
 
-	c := &client{ws: ws}
+	c := &client{Object: ws, msgs: make(chan string)}
 
-	ws.Set("onopen", func(evt *js.Object) { go c.onOpen(evt.Get("data").String()) })
-	ws.Set("onclose", func(evt *js.Object) { go c.onClose(evt.Get("data").String()) })
-	ws.Set("onmessage", func(evt *js.Object) { go c.onMessage(evt.Get("data").String()) })
-	ws.Set("onerror", func(evt *js.Object) { go c.onError(evt.Get("data").String()) })
+	ws.Set("onopen", func(evt *js.Object) { go c.onOpen() })
+	ws.Set("onclose", func(evt *js.Object) { go c.onClose() })
+	ws.Set("onmessage", func(evt *js.Object) { go c.onMessage(evt) })
+	ws.Set("onerror", func(evt *js.Object) { go c.onError(evt) })
 
 	return c
 }
 
-func initServer(url string) *server {
-
-	s := &server{u: websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}}
+func initServer(url string) {
+	s := &server{websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}}
 
 	http.HandleFunc("/channet", s.onConnection)
 
@@ -106,121 +142,33 @@ func initServer(url string) *server {
 	if err != nil {
 		panic(err)
 	}
-
-	return s
 }
 
-func (c *client) onOpen(data string) {
-
+func (c *client) onOpen() {
 	for {
-		// js.Global.Call("alert", "onOpen :: handlerm.Lock()...")
-		handlerm.RLock()
-		// js.Global.Call("alert", "len(handlers)="+strconv.Itoa(len(handlers)))
-		// js.Global.Call("alert", "onOpen :: handlerm.Lock() !")
-		for pattern, handler := range handlers {
-			// js.Global.Call("alert", "onOpen :: handler.wstringm.Lock()...")
-			handler.wstringm.RLock()
-			// js.Global.Call("alert", "onOpen :: handler.wstringm.Lock() !")
-			for i, wstring := range handler.wstrings {
-				select {
-				case s := <-wstring.c:
-					// js.Global.Call("alert", "sending `"+s+"`")
-					c.ws.Call("send", pattern+"$"+strconv.Itoa(i)+"$"+s)
-					// js.Global.Call("alert", "send !")
-					// default:
-				}
-			}
-			handler.wstringm.RUnlock()
-		}
-		handlerm.RUnlock()
+		write(c)
 	}
 }
 
-func (c *client) onClose(data string) {
-	// js.Global.Call("alert", "[WS CLOSED]")
+func (c *client) onClose() {}
+
+func (c *client) onMessage(evt *js.Object) {
+	c.msgs <- evt.Get("data").String()
 }
 
-func (c *client) onMessage(data string) {
-
-	// js.Global.Call("alert", "onMessage !")
-	parts := strings.Split(data, "$")
-	pattern, index, message := parts[0], parts[1], parts[2]
-	i, err := strconv.Atoi(index)
-	if err != nil {
-		panic(err)
-	}
-
-	// js.Global.Call("alert", "onMessage :: handlerm.Lock()...")
-	handlerm.RLock()
-	// js.Global.Call("alert", "onMessage :: handlerm.Lock() !")
-	// js.Global.Call("alert", "onMessage :: handlers[pattern].rstringm.Lock()...")
-	handlers[pattern].rstringm.RLock()
-	// js.Global.Call("alert", "onMessage :: handlers[pattern].rstringm.Lock() !")
-	// js.Global.Call("alert", "onMessage :: handlers[pattern].rstrings[i].c <- message...")
-	handlers[pattern].rstrings[i].c <- message
-	// js.Global.Call("alert", "onMessage :: handlers[pattern].rstrings[i].c <- message !")
-	handlers[pattern].rstringm.RUnlock()
-	handlerm.RUnlock()
-}
-
-func (c *client) onError(data string) {
-	// js.Global.Call("alert", "[WS ERROR]")
-}
+func (c *client) onError(evt *js.Object) {}
 
 func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
-
-	c, err := s.u.Upgrade(w, r, nil)
+	conn, err := s.Upgrade(w, r, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer c.Close()
+	defer conn.Close()
+	c := connection{conn}
 
-	go func() {
-		for {
-			// fmt.Println(`c.ReadMessage()...`)
-			_, b, err := c.ReadMessage()
-			if err != nil {
-				return
-			}
-			// fmt.Println(`c.ReadMessage() !`, string(b))
-
-			parts := strings.Split(string(b), "$")
-			pattern, index, message := parts[0], parts[1], parts[2]
-			i, err := strconv.Atoi(index)
-			if err != nil {
-				panic(err)
-			}
-
-			// fmt.Println("pattern ::", pattern)
-
-			handlerm.RLock()
-			handlers[pattern].rstringm.RLock()
-			handlers[pattern].rstrings[i].c <- message
-			handlers[pattern].rstringm.RUnlock()
-			handlerm.RUnlock()
-		}
-	}()
+	go write(c)
 
 	for {
-		handlerm.RLock()
-		for pattern, handler := range handlers {
-			handler.wstringm.RLock()
-			for i, wstring := range handler.wstrings {
-				// fmt.Println(`len(handler.wstrings)=`, len(handler.wstrings))
-				select {
-				case s := <-wstring.c:
-					// fmt.Println("sending `" + s + "`")
-					// fmt.Println(`c.WriteMessage()...`)
-					err := c.WriteMessage(websocket.TextMessage, []byte(pattern+"$"+strconv.Itoa(i)+"$"+s))
-					if err != nil {
-						return
-					}
-					// fmt.Println(`c.WriteMessage() !`)
-					// default:
-				}
-			}
-			handler.wstringm.RUnlock()
-		}
-		handlerm.RUnlock()
+		read(c)
 	}
 }
