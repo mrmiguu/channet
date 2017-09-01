@@ -89,9 +89,9 @@ func read(packet string) {
 	}
 
 	handlerm.RLock()
-	handlers[pattern].rstringm.RLock()
-	handlers[pattern].rstrings[i] <- message
-	handlers[pattern].rstringm.RUnlock()
+	handlers[pattern].stringm.RLock()
+	handlers[pattern].strings[i].c <- message
+	handlers[pattern].stringm.RUnlock()
 	handlerm.RUnlock()
 }
 
@@ -100,15 +100,17 @@ func write(sck socket) {
 		h := h
 		go func() {
 			for {
-				h.wstringm.RLock()
-				for i, wstring := range h.wstrings {
-
-					err := sck.To(h.pattern + "$" + strconv.Itoa(i) + "$" + <-wstring)
-					if err != nil {
-						return
-					}
+				for sc := range h.stringcc {
+					sc := sc
+					go func() {
+						for {
+							err := sck.To(h.pattern + "$" + strconv.Itoa(sc.i) + "$" + <-sc.c)
+							if err != nil {
+								return
+							}
+						}
+					}()
 				}
-				h.wstringm.RUnlock()
 			}
 		}()
 	}
