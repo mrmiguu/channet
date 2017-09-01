@@ -9,6 +9,7 @@ import (
 
 // Handler is a base for constructing network channels.
 type Handler struct {
+	pattern  string
 	rstrings []chan string
 	rstringm sync.RWMutex
 	wstrings []chan string

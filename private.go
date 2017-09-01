@@ -96,19 +96,20 @@ func read(packet string) {
 }
 
 func write(sck socket) {
+	for h := range handlerc {
+		h := h
+		go func() {
+			for {
+				h.wstringm.RLock()
+				for i, wstring := range h.wstrings {
 
-	handlerm.RLock()
-	for pattern, handler := range handlers {
-
-		handler.wstringm.RLock()
-		for i, wstring := range handler.wstrings {
-
-			err := sck.To(pattern + "$" + strconv.Itoa(i) + "$" + <-wstring)
-			if err != nil {
-				return
+					err := sck.To(h.pattern + "$" + strconv.Itoa(i) + "$" + <-wstring)
+					if err != nil {
+						return
+					}
+				}
+				h.wstringm.RUnlock()
 			}
-		}
-		handler.wstringm.RUnlock()
+		}()
 	}
-	handlerm.RUnlock()
 }

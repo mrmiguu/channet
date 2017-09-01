@@ -21,11 +21,13 @@ func New(pattern string) *Handler {
 		panic("handler `" + pattern + "` already exists")
 	}
 
-	h := &Handler{}
+	h := &Handler{pattern: pattern}
 
 	handlerm.Lock()
 	handlers[pattern] = h
 	handlerm.Unlock()
+
+	handlerc <- h
 
 	return h
 }
