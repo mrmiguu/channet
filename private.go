@@ -99,18 +99,16 @@ func write(sck socket) {
 	for h := range handlerc {
 		h := h
 		go func() {
-			for {
-				for sc := range h.stringcc {
-					sc := sc
-					go func() {
-						for {
-							err := sck.To(h.pattern + "$" + strconv.Itoa(sc.i) + "$" + <-sc.c)
-							if err != nil {
-								return
-							}
+			for sc := range h.stringcc {
+				sc := sc
+				go func() {
+					for {
+						err := sck.To(h.pattern + "$" + strconv.Itoa(sc.i) + "$" + <-sc.c)
+						if err != nil {
+							return
 						}
-					}()
-				}
+					}
+				}()
 			}
 		}()
 	}
