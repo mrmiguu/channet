@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gorilla/websocket"
@@ -111,6 +110,7 @@ func read(sck socket) {
 	if err != nil {
 		panic(err)
 	}
+	// sck.Print("read " + strconv.Itoa(i))
 
 	handlerm.RLock()
 	handlers[pattern].rstringm.RLock()
@@ -121,24 +121,28 @@ func read(sck socket) {
 
 func write(sck socket) {
 	handlerm.RLock()
+
 	for pattern, handler := range handlers {
-		handler.wstringm.RLock()
-		var wg sync.WaitGroup
-		wg.Add(len(handler.wstrings))
-		for i, wstring := range handler.wstrings {
-			i, wstring := i, wstring
-			go func() {
-				defer wg.Done()
-				err := sck.To(pattern + "$" + strconv.Itoa(i) + "$" + <-wstring)
-				if err != nil {
-					handler.wstringm.RUnlock()
-					handlerm.RUnlock()
-					return
-				}
-			}()
-		}
-		wg.Wait()
-		handler.wstringm.RUnlock()
+		pattern, handler := pattern, handler
+
+		go func() {
+			handler.wstringm.RLock()
+
+			for i, wstring := range handler.wstrings {
+				i, wstring := i, wstring
+
+				go func() {
+					err := sck.To(pattern + "$" + strconv.Itoa(i) + "$" + <-wstring)
+					if err != nil {
+						return
+					}
+				}()
+			}
+
+			handler.wstringm.RUnlock()
+
+		}()
 	}
+
 	handlerm.RUnlock()
 }
