@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Handler is a base for constructing network channels.
 type Handler struct {
 	rstrings []chan string
 	rstringm sync.RWMutex
@@ -30,4 +31,5 @@ type connection struct {
 type socket interface {
 	To(string) error
 	From() (string, error)
+	Print(string)
 }
