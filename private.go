@@ -120,29 +120,19 @@ func read(sck socket) {
 }
 
 func write(sck socket) {
+
 	handlerm.RLock()
-
 	for pattern, handler := range handlers {
-		pattern, handler := pattern, handler
 
-		go func() {
-			handler.wstringm.RLock()
+		handler.wstringm.RLock()
+		for i, wstring := range handler.wstrings {
 
-			for i, wstring := range handler.wstrings {
-				i, wstring := i, wstring
-
-				go func() {
-					err := sck.To(pattern + "$" + strconv.Itoa(i) + "$" + <-wstring)
-					if err != nil {
-						return
-					}
-				}()
+			err := sck.To(pattern + "$" + strconv.Itoa(i) + "$" + <-wstring)
+			if err != nil {
+				return
 			}
-
-			handler.wstringm.RUnlock()
-
-		}()
+		}
+		handler.wstringm.RUnlock()
 	}
-
 	handlerm.RUnlock()
 }
