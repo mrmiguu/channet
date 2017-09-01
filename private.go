@@ -14,12 +14,16 @@ import (
 func initClient(url string) *client {
 	ws := js.Global.Get("WebSocket").New("ws://" + url + "/channet")
 
-	c := &client{Object: ws, msgs: make(chan string, 1)}
+	c := &client{Object: ws}
 
-	ws.Set("onopen", func(evt *js.Object) { go c.onOpen() })
-	ws.Set("onclose", func(evt *js.Object) { go c.onClose() })
-	ws.Set("onmessage", func(evt *js.Object) { go c.onMessage(evt) })
-	ws.Set("onerror", func(evt *js.Object) { go c.onError(evt) })
+	ws.Set("onopen", func(evt *js.Object) {
+		go func() {
+			for {
+				write(c)
+			}
+		}()
+	})
+	ws.Set("onmessage", func(evt *js.Object) { go read(evt.Get("data").String()) })
 
 	return c
 }
@@ -35,20 +39,6 @@ func initServer(url string) {
 	}
 }
 
-func (c *client) onOpen() {
-	for {
-		write(c)
-	}
-}
-
-func (c *client) onMessage(evt *js.Object) {
-	c.msgs <- evt.Get("data").String()
-	read(c)
-}
-
-func (c *client) onClose()               {}
-func (c *client) onError(evt *js.Object) {}
-
 func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 	conn, err := s.Upgrade(w, r, nil)
 	if err != nil {
@@ -59,7 +49,11 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		for {
-			read(c)
+			_, b, err := c.ReadMessage()
+			if err != nil {
+				return
+			}
+			read(string(b))
 		}
 	}()
 
@@ -74,10 +68,6 @@ func (c client) To(packet string) (err error) {
 	return
 }
 
-func (c client) From() (string, error) {
-	return <-c.msgs, nil
-}
-
 func (c client) Print(s string) {
 	jsutil.Alert(s)
 }
@@ -86,31 +76,17 @@ func (c connection) To(packet string) error {
 	return c.WriteMessage(websocket.TextMessage, []byte(packet))
 }
 
-func (c connection) From() (string, error) {
-	_, b, err := c.ReadMessage()
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
 func (c connection) Print(s string) {
 	fmt.Println(s)
 }
 
-func read(sck socket) {
-	pkt, err := sck.From()
-	if err != nil {
-		return
-	}
-
-	parts := strings.Split(pkt, "$")
+func read(packet string) {
+	parts := strings.Split(packet, "$")
 	pattern, index, message := parts[0], parts[1], parts[2]
 	i, err := strconv.Atoi(index)
 	if err != nil {
 		panic(err)
 	}
-	// sck.Print("read " + strconv.Itoa(i))
 
 	handlerm.RLock()
 	handlers[pattern].rstringm.RLock()

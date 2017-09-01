@@ -17,7 +17,6 @@ type Handler struct {
 
 type client struct {
 	*js.Object
-	msgs chan string
 }
 
 type server struct {
@@ -30,6 +29,5 @@ type connection struct {
 
 type socket interface {
 	To(string) error
-	From() (string, error)
 	Print(string)
 }
