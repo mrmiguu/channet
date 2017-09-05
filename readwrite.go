@@ -5,8 +5,12 @@ import (
 	"strings"
 )
 
+const (
+	us31 = "▼"
+)
+
 func read(packet string) {
-	parts := strings.Split(packet, "$")
+	parts := strings.Split(packet, us31)
 	pattern, idx, msg := parts[0], parts[1], parts[2]
 	i, err := strconv.Atoi(idx)
 	if err != nil {
@@ -41,7 +45,7 @@ func write() {
 					for msg := range w.c {
 						socketm.RLock()
 						for _, sck := range sockets {
-							err := sck.To(h.pattern + "$" + w.i + "$" + msg)
+							err := sck.To(h.pattern + us31 + w.i + us31 + msg)
 							if err != nil {
 								continue
 							}
