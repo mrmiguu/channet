@@ -3,7 +3,9 @@ package channet
 import "sync"
 
 var (
-	handlers = map[string]*Handler{}
-	handlerm sync.RWMutex
-	handlerc = make(chan *Handler)
+	rhandlers = map[string]*Handler{}
+	rhandlerm sync.RWMutex
+	whandlers = make(chan *Handler, 1)
+	sockets   []socket
+	socketm   sync.RWMutex
 )

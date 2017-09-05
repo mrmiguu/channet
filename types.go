@@ -10,13 +10,13 @@ import (
 // Handler is a base for constructing network channels.
 type Handler struct {
 	pattern  string
-	strings  []stringc
-	stringm  sync.RWMutex
-	stringcc chan stringc
+	rstrings []chan string
+	rstringm sync.RWMutex
+	wstrings chan wstring
 }
 
-type stringc struct {
-	i int
+type wstring struct {
+	i string
 	c chan string
 }
 
