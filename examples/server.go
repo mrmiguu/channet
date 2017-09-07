@@ -9,30 +9,30 @@ func main() {
 	listen()
 }
 
-type user struct {
+type player struct {
 	h *channet.Handler
 	r <-chan string
 	w chan<- string
 }
 
 func listen() {
-	db := map[string]user{}
+	db := map[string]player{}
 
-	lr, _ := channet.New("login").String()
+	username, _ := channet.New("login").String()
 
 	for {
-		usr := <-lr
+		usr := <-username
 		msg := "Welcome back, " + usr
 
-		u, exists := db[usr]
+		p, exists := db[usr]
 		if !exists {
-			uh := channet.New(usr)
-			ur, uw := uh.String()
-			u = user{uh, ur, uw}
-			db[usr] = u
+			h := channet.New(usr)
+			r, w := h.String()
+			p = player{h, r, w}
+			db[usr] = p
 			msg = "Welcome, " + usr
 		}
 
-		u.w <- msg
+		p.w <- msg
 	}
 }

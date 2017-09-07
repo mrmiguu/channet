@@ -11,9 +11,9 @@ func main() {
 }
 
 func login() {
-	_, lw := channet.New("login").String()
+	_, username := channet.New("login").String()
 	usr := jsutil.Prompt("username?")
-	lw <- usr
-	ur, _ := channet.New(usr).String()
-	jsutil.Alert(<-ur)
+	username <- usr
+	r, _ := channet.New(usr).String()
+	jsutil.Alert(<-r)
 }
