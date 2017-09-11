@@ -46,7 +46,11 @@ func New(pattern string) *Handler {
 		panic("handler `" + pattern + "` already exists")
 	}
 
-	h := &Handler{pattern: pattern, wstrings: make(chan wstring, 1)}
+	h := &Handler{
+		pattern:  pattern,
+		wstrings: make(chan wstring, 1),
+		wints:    make(chan wint, 1),
+	}
 	rhandlers[pattern] = h
 	whandlers <- h
 
@@ -72,6 +76,29 @@ func (h *Handler) String(buf ...int) (<-chan string, chan<- string) {
 	i := strconv.Itoa(len(h.rstrings))
 	h.rstrings = append(h.rstrings, r)
 	h.wstrings <- wstring{i, w}
+
+	return r, w
+}
+
+// Int creates a reading and writing channel for sending integers.
+func (h *Handler) Int(buf ...int) (<-chan int, chan<- int) {
+	if len(buf) > 1 {
+		panic("too many arguments")
+	}
+
+	l := 0
+	if len(buf) > 0 {
+		l = buf[0]
+	}
+
+	h.rintm.Lock()
+	defer h.rintm.Unlock()
+
+	r := make(chan int, l)
+	w := make(chan int, l)
+	i := strconv.Itoa(len(h.rints))
+	h.rints = append(h.rints, r)
+	h.wints <- wint{i, w}
 
 	return r, w
 }
