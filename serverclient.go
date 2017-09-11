@@ -25,6 +25,9 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	socketm.Lock()
+	if len(sockets) < 1 {
+		reboot <- true
+	}
 	sockets = append(sockets, connection{conn})
 	socketm.Unlock()
 }

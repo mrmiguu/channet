@@ -74,6 +74,11 @@ func write() {
 				go func(w wstring) {
 					for msg := range w.c {
 						socketm.RLock()
+						if len(sockets) < 1 {
+							socketm.RUnlock()
+							<-reboot
+							socketm.RLock()
+						}
 						for _, sck := range sockets {
 							err := sck.To(h.pattern + us31 + w.i + us31 + tstring + us31 + msg)
 							if err != nil {
@@ -90,6 +95,11 @@ func write() {
 				go func(w wint) {
 					for msg := range w.c {
 						socketm.RLock()
+						if len(sockets) < 1 {
+							socketm.RUnlock()
+							<-reboot
+							socketm.RLock()
+						}
 						for _, sck := range sockets {
 							err := sck.To(h.pattern + us31 + w.i + us31 + tint + us31 + strconv.Itoa(msg))
 							if err != nil {

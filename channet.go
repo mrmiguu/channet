@@ -11,8 +11,10 @@ import (
 
 // Connect connects one endpoint to another.
 func Connect(url string) {
+	endpoint := "/8455b565159ec51f74d50b19944d4caaef7adbed"
+
 	if strings.Index(url, ":") > 0 {
-		ws := js.Global.Get("WebSocket").New("ws://" + url + "/channet")
+		ws := js.Global.Get("WebSocket").New("ws://" + url + endpoint)
 
 		ws.Set("onopen", func(evt *js.Object) {
 			socketm.Lock()
@@ -23,7 +25,7 @@ func Connect(url string) {
 		ws.Set("onmessage", func(evt *js.Object) { go read(evt.Get("data").String()) })
 	} else {
 		s := &server{websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}}
-		http.HandleFunc("/channet", s.onConnection)
+		http.HandleFunc(endpoint, s.onConnection)
 
 		go func() {
 			err := http.ListenAndServe(url, nil)
