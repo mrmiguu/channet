@@ -9,6 +9,7 @@ import (
 )
 
 func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("onConnection!")
 	conn, err := s.Upgrade(w, r, nil)
 	if err != nil {
 		panic(err)
@@ -18,6 +19,8 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		for {
 			_, b, err := conn.ReadMessage()
 			if err != nil {
+				fmt.Println("read error")
+				conn.Close()
 				return
 			}
 			read(string(b))

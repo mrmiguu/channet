@@ -1,6 +1,7 @@
 package channet
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -98,13 +99,22 @@ func write() {
 						if len(sockets) < 1 {
 							socketm.RUnlock()
 							<-reboot
+							fmt.Println("REBOOT")
 							socketm.RLock()
 						}
-						for _, sck := range sockets {
+						dead := []int{}
+						for i, sck := range sockets {
 							err := sck.To(h.pattern + us31 + w.i + us31 + tint + us31 + strconv.Itoa(msg))
 							if err != nil {
-								continue
+								panic("error writing")
+								dead = append(dead, i)
 							}
+						}
+						fmt.Println("dead=", len(dead))
+						for _, i := range dead {
+							copy(sockets[i:], sockets[i+1:])
+							sockets[len(sockets)-1] = nil
+							sockets = sockets[:len(sockets)-1]
 						}
 						socketm.RUnlock()
 					}
