@@ -9,30 +9,40 @@ import (
 )
 
 func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("onConnection!")
 	conn, err := s.Upgrade(w, r, nil)
 	if err != nil {
 		panic(err)
 	}
 
+	socketm.Lock()
+	i := len(sockets)
+	fmt.Println("socket[", i, "] !")
+	if i < 1 {
+		fmt.Println("reboot <- true...")
+		reboot <- true
+		fmt.Println("reboot <- true !")
+	}
+	sockets = append(sockets, connection{conn})
+	socketm.Unlock()
+
 	go func() {
 		for {
 			_, b, err := conn.ReadMessage()
 			if err != nil {
-				fmt.Println("read error")
+				fmt.Println("conn.ReadMessage() error")
 				conn.Close()
+
+				socketm.Lock()
+				copy(sockets[i:], sockets[i+1:])
+				sockets[len(sockets)-1] = nil
+				sockets = sockets[:len(sockets)-1]
+				socketm.Unlock()
+
 				return
 			}
 			read(string(b))
 		}
 	}()
-
-	socketm.Lock()
-	if len(sockets) < 1 {
-		reboot <- true
-	}
-	sockets = append(sockets, connection{conn})
-	socketm.Unlock()
 }
 
 func (c client) To(packet string) (err error) {

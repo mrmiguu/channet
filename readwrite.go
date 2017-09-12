@@ -77,14 +77,13 @@ func write() {
 						socketm.RLock()
 						if len(sockets) < 1 {
 							socketm.RUnlock()
+							fmt.Println("sleeping... [string]")
 							<-reboot
+							fmt.Println("REBOOT [string]")
 							socketm.RLock()
 						}
 						for _, sck := range sockets {
-							err := sck.To(h.pattern + us31 + w.i + us31 + tstring + us31 + msg)
-							if err != nil {
-								continue
-							}
+							sck.To(h.pattern + us31 + w.i + us31 + tstring + us31 + msg)
 						}
 						socketm.RUnlock()
 					}
@@ -95,26 +94,17 @@ func write() {
 			for w := range h.wints {
 				go func(w wint) {
 					for msg := range w.c {
+						fmt.Println("writing new int:", msg)
 						socketm.RLock()
 						if len(sockets) < 1 {
 							socketm.RUnlock()
+							fmt.Println("sleeping... [int]")
 							<-reboot
-							fmt.Println("REBOOT")
+							fmt.Println("REBOOT [int]")
 							socketm.RLock()
 						}
-						dead := []int{}
-						for i, sck := range sockets {
-							err := sck.To(h.pattern + us31 + w.i + us31 + tint + us31 + strconv.Itoa(msg))
-							if err != nil {
-								panic("error writing")
-								dead = append(dead, i)
-							}
-						}
-						fmt.Println("dead=", len(dead))
-						for _, i := range dead {
-							copy(sockets[i:], sockets[i+1:])
-							sockets[len(sockets)-1] = nil
-							sockets = sockets[:len(sockets)-1]
+						for _, sck := range sockets {
+							sck.To(h.pattern + us31 + w.i + us31 + tint + us31 + strconv.Itoa(msg))
 						}
 						socketm.RUnlock()
 					}
