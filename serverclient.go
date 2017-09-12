@@ -29,6 +29,13 @@ func (s *server) onConnection(w http.ResponseWriter, r *http.Request) {
 		for {
 			_, b, err := conn.ReadMessage()
 			if err != nil {
+				// all other blocking reads should return their default values
+				// and blocking writes should panic
+				// all other blocking reads should return their default values
+				// and blocking writes should panic
+				// all other blocking reads should return their default values
+				// and blocking writes should panic
+
 				fmt.Println("conn.ReadMessage() error")
 				conn.Close()
 
